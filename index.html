@@ -1,0 +1,871 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MNIST Digit Classifier · BSCS 3A</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Sora:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg:       #07090F;
+      --surface:  #0F1320;
+      --card:     #141926;
+      --border:   #1E2740;
+      --accent:   #4F8EF7;
+      --accent2:  #85B4FF;
+      --green:    #34D399;
+      --red:      #F87171;
+      --yellow:   #FBBF24;
+      --text:     #E8EDF8;
+      --muted:    #5A6788;
+      --mono:     'IBM Plex Mono', monospace;
+      --sans:     'Sora', sans-serif;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 14px;
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+
+    /* subtle dot grid */
+    body::before {
+      content: '';
+      position: fixed; inset: 0; z-index: 0;
+      background-image: radial-gradient(circle, rgba(79,142,247,.07) 1px, transparent 1px);
+      background-size: 28px 28px;
+      pointer-events: none;
+    }
+
+    /* ── NAV ── */
+    nav {
+      position: sticky; top: 0; z-index: 50;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 2rem; height: 52px;
+      background: rgba(7,9,15,.9);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border);
+    }
+    .nav-logo { font-family: var(--mono); font-size: 13px; color: var(--accent2); }
+    .nav-tabs { display: flex; gap: 4px; }
+    .nav-tab {
+      padding: 6px 16px; border-radius: 6px;
+      font-size: 13px; font-weight: 500;
+      cursor: pointer; border: none;
+      background: transparent; color: var(--muted);
+      transition: all .2s;
+    }
+    .nav-tab:hover { color: var(--text); background: var(--surface); }
+    .nav-tab.active { background: var(--surface); color: var(--accent2); border: 1px solid var(--border); }
+    .nav-badge {
+      font-family: var(--mono); font-size: 11px;
+      color: var(--muted); background: var(--surface);
+      border: 1px solid var(--border); border-radius: 999px;
+      padding: 3px 10px;
+    }
+
+    /* ── LAYOUT ── */
+    .page { display: none; position: relative; z-index: 1; }
+    .page.active { display: block; }
+    .container { max-width: 900px; margin: 0 auto; padding: 2.5rem 1.5rem; }
+
+    /* ── PAGE HEADER ── */
+    .page-header { margin-bottom: 2rem; }
+    .page-header h1 { font-size: 22px; font-weight: 600; letter-spacing: -.02em; }
+    .page-header p { color: var(--muted); margin-top: .35rem; font-size: 13px; }
+
+    /* ── CARDS ── */
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 1.5rem;
+    }
+    .card + .card { margin-top: 1rem; }
+    .card-title {
+      font-size: 12px; font-weight: 600;
+      letter-spacing: .1em; text-transform: uppercase;
+      color: var(--muted); margin-bottom: 1rem;
+    }
+
+    /* ── PREDICT PAGE ── */
+    .predict-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+    @media (max-width: 640px) { .predict-grid { grid-template-columns: 1fr; } }
+
+    /* Canvas */
+    .canvas-wrap {
+      display: flex; flex-direction: column; align-items: center; gap: 1rem;
+    }
+    #draw-canvas {
+      border-radius: 12px;
+      cursor: crosshair;
+      touch-action: none;
+      display: block;
+      border: 2px solid var(--border);
+      transition: border-color .2s;
+    }
+    #draw-canvas:hover { border-color: var(--accent); }
+
+    .canvas-controls { display: flex; gap: .5rem; width: 100%; }
+
+    /* Tabs inside card */
+    .input-tabs { display: flex; gap: 4px; margin-bottom: 1rem; }
+    .input-tab {
+      flex: 1; padding: 8px; border-radius: 8px;
+      font-size: 12px; font-weight: 600;
+      cursor: pointer; border: 1px solid var(--border);
+      background: var(--surface); color: var(--muted);
+      transition: all .2s; text-align: center;
+    }
+    .input-tab.active {
+      background: rgba(79,142,247,.15);
+      border-color: var(--accent);
+      color: var(--accent2);
+    }
+
+    .tab-panel { display: none; }
+    .tab-panel.active { display: flex; flex-direction: column; align-items: center; gap: 1rem; }
+
+    /* Upload zone */
+    .upload-zone {
+      width: 100%; min-height: 220px;
+      border: 2px dashed var(--border);
+      border-radius: 12px;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: .75rem; cursor: pointer;
+      transition: all .2s; padding: 1.5rem;
+      text-align: center;
+    }
+    .upload-zone:hover, .upload-zone.drag-over {
+      border-color: var(--accent);
+      background: rgba(79,142,247,.05);
+    }
+    .upload-zone .upload-icon { font-size: 32px; }
+    .upload-zone p { color: var(--muted); font-size: 13px; }
+    .upload-zone strong { color: var(--accent2); }
+    #upload-preview { max-width: 200px; border-radius: 8px; display: none; }
+    #file-input { display: none; }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      gap: .5rem; padding: 10px 20px; border-radius: 8px;
+      font-family: var(--sans); font-size: 13px; font-weight: 600;
+      cursor: pointer; border: none; transition: all .2s;
+    }
+    .btn-primary { background: var(--accent); color: #fff; width: 100%; }
+    .btn-primary:hover:not(:disabled) { background: #3a7de8; transform: translateY(-1px); }
+    .btn-primary:disabled { opacity: .45; cursor: not-allowed; }
+    .btn-ghost {
+      background: var(--surface); color: var(--muted);
+      border: 1px solid var(--border); flex: 1;
+      font-size: 12px; padding: 8px 14px;
+    }
+    .btn-ghost:hover { color: var(--text); border-color: var(--accent); }
+
+    /* Result panel */
+    .result-empty {
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      min-height: 280px; gap: .75rem;
+      color: var(--muted); font-size: 13px; text-align: center;
+    }
+    .result-empty .empty-icon { font-size: 40px; opacity: .4; }
+
+    .result-content { display: none; }
+
+    .pred-badge {
+      font-family: var(--mono); font-size: 72px; font-weight: 600;
+      width: 120px; height: 120px;
+      display: flex; align-items: center; justify-content: center;
+      background: linear-gradient(135deg, #1a3a8f, #4F8EF7);
+      border-radius: 20px;
+      box-shadow: 0 8px 32px rgba(79,142,247,.3);
+      margin: 0 auto 1rem;
+      animation: pop .3s cubic-bezier(.34,1.56,.64,1);
+    }
+    @keyframes pop {
+      from { transform: scale(.7); opacity: 0; }
+      to   { transform: scale(1);  opacity: 1; }
+    }
+
+    .conf-label {
+      text-align: center; margin-bottom: 1.25rem;
+      font-size: 13px; color: var(--muted);
+    }
+    .conf-label strong { color: var(--green); font-family: var(--mono); font-size: 16px; }
+
+    /* Confidence bars */
+    .conf-bars { display: flex; flex-direction: column; gap: 5px; }
+    .conf-row {
+      display: grid; grid-template-columns: 18px 1fr 46px;
+      align-items: center; gap: 8px;
+    }
+    .conf-row .digit-lbl {
+      font-family: var(--mono); font-size: 12px; color: var(--muted);
+      text-align: right;
+    }
+    .bar-track {
+      height: 8px; background: var(--surface);
+      border-radius: 99px; overflow: hidden;
+    }
+    .bar-fill {
+      height: 100%; border-radius: 99px;
+      background: var(--border);
+      transition: width .6s cubic-bezier(.4,0,.2,1);
+    }
+    .bar-fill.top { background: linear-gradient(90deg, #1D4ED8, #4F8EF7); }
+    .conf-pct { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+
+    .preview-img {
+      display: block; margin: .75rem auto 0;
+      border-radius: 8px; border: 1px solid var(--border);
+      image-rendering: pixelated;
+    }
+
+    /* Loading spinner */
+    .spinner {
+      width: 32px; height: 32px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-state {
+      display: none; flex-direction: column;
+      align-items: center; justify-content: center;
+      min-height: 280px; gap: 1rem;
+      color: var(--muted); font-size: 13px;
+    }
+
+    /* ── VALIDATE PAGE ── */
+    .metrics-grid {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem;
+      margin-bottom: 1rem;
+    }
+    @media (max-width: 580px) { .metrics-grid { grid-template-columns: repeat(2, 1fr); } }
+
+    .metric-card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 12px; padding: 1rem; text-align: center;
+    }
+    .metric-value {
+      font-family: var(--mono); font-size: 22px; font-weight: 600;
+      color: var(--accent2); display: block;
+    }
+    .metric-name { font-size: 11px; color: var(--muted); margin-top: .25rem; }
+
+    .runs-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .runs-table th {
+      font-family: var(--mono); font-size: 10px; letter-spacing: .1em;
+      color: var(--muted); padding: 8px 12px; text-align: left;
+      border-bottom: 1px solid var(--border); font-weight: 400;
+    }
+    .runs-table td { padding: 8px 12px; border-bottom: 1px solid var(--border); }
+    .runs-table tr:last-child td { border-bottom: none; }
+    .runs-table tr.correct td { background: rgba(52,211,153,.04); }
+    .runs-table tr.wrong   td { background: rgba(248,113,113,.04); }
+
+    .badge {
+      display: inline-block; font-size: 11px; font-family: var(--mono);
+      padding: 2px 8px; border-radius: 4px;
+    }
+    .badge-ok  { background: rgba(52,211,153,.15); color: var(--green); }
+    .badge-err { background: rgba(248,113,113,.15); color: var(--red); }
+
+    .thumbs-row {
+      display: flex; gap: 8px; flex-wrap: wrap; margin-top: .75rem;
+    }
+    .thumb-item { text-align: center; }
+    .thumb-item img {
+      display: block; border-radius: 6px;
+      border: 2px solid var(--border);
+      image-rendering: pixelated;
+    }
+    .thumb-item img.ok  { border-color: var(--green); }
+    .thumb-item img.err { border-color: var(--red); }
+    .thumb-item span { display: block; font-size: 10px; font-family: var(--mono); color: var(--muted); margin-top: 3px; }
+
+    /* Confusion matrix */
+    .cm-wrap { overflow-x: auto; }
+    .cm-table { border-collapse: collapse; font-family: var(--mono); font-size: 11px; margin: 0 auto; }
+    .cm-table th, .cm-table td {
+      width: 34px; height: 34px; text-align: center;
+      border: 1px solid var(--border);
+    }
+    .cm-table th { color: var(--muted); font-weight: 400; background: var(--surface); }
+    .cm-table td { position: relative; }
+    .cm-cell-0 { color: var(--muted); }
+    .cm-cell-1 { background: rgba(79,142,247,.5); color: #fff; font-weight: 600; }
+
+    /* ── ABOUT PAGE ── */
+    .about-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    @media (max-width: 600px) { .about-grid { grid-template-columns: 1fr; } }
+
+    .info-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .info-table td { padding: 8px 0; border-bottom: 1px solid var(--border); vertical-align: top; }
+    .info-table tr:last-child td { border-bottom: none; }
+    .info-table td:first-child { color: var(--muted); width: 45%; }
+    .info-table td:last-child { font-weight: 500; }
+
+    .arch-item {
+      display: grid; grid-template-columns: 100px 1fr 60px 60px;
+      align-items: center; gap: 1rem;
+      padding: .6rem 0; border-bottom: 1px solid var(--border);
+      font-size: 13px;
+    }
+    .arch-item:last-child { border-bottom: none; }
+    .arch-layer { font-family: var(--mono); color: var(--muted); font-size: 12px; }
+    .arch-bar-outer { background: var(--surface); border-radius: 4px; height: 16px; overflow: hidden; }
+    .arch-bar-inner {
+      height: 100%; border-radius: 4px;
+      background: linear-gradient(90deg, #1D4ED8, #4F8EF7);
+      display: flex; align-items: center; padding: 0 6px;
+      font-size: 10px; color: #fff; white-space: nowrap;
+      min-width: 20px;
+    }
+    .arch-n { font-family: var(--mono); font-size: 12px; color: var(--accent2); text-align: right; }
+    .arch-act { font-family: var(--mono); font-size: 11px; color: var(--muted); text-align: right; }
+
+    .exp-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .exp-table th {
+      font-family: var(--mono); font-size: 10px; letter-spacing: .1em;
+      color: var(--muted); padding: 7px 10px; text-align: left;
+      border-bottom: 1px solid var(--border); font-weight: 400;
+    }
+    .exp-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); }
+    .exp-table tr:last-child td { border-bottom: none; }
+    .exp-table td:first-child { font-family: var(--mono); color: var(--accent2); }
+
+    .analysis-box {
+      background: rgba(79,142,247,.07); border: 1px solid rgba(79,142,247,.2);
+      border-radius: 10px; padding: 1rem 1.25rem;
+      font-size: 13px; line-height: 1.75; color: var(--text);
+    }
+
+    /* toast */
+    .toast {
+      position: fixed; bottom: 1.5rem; left: 50%; transform: translateX(-50%);
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 8px; padding: 10px 20px;
+      font-size: 13px; z-index: 999;
+      opacity: 0; pointer-events: none;
+      transition: opacity .3s;
+    }
+    .toast.show { opacity: 1; }
+
+    /* validate placeholder */
+    .validate-placeholder {
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      min-height: 200px; gap: 1rem;
+      color: var(--muted); font-size: 13px; text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <span class="nav-logo">🔢 MNIST Classifier</span>
+  <div class="nav-tabs">
+    <button class="nav-tab active" onclick="switchPage('predict')">Predict</button>
+    <button class="nav-tab" onclick="switchPage('validate')">Validate</button>
+    <button class="nav-tab" onclick="switchPage('about')">About</button>
+  </div>
+  <span class="nav-badge">BSCS 3A</span>
+</nav>
+
+<!-- ═══════ PREDICT PAGE ═══════ -->
+<div id="page-predict" class="page active">
+  <div class="container">
+    <div class="page-header">
+      <h1>Handwritten Digit Classifier</h1>
+      <p>Draw a digit or upload an image — the model predicts it instantly.</p>
+    </div>
+
+    <div class="predict-grid">
+
+      <!-- Input Card -->
+      <div class="card">
+        <div class="card-title">Input</div>
+        <div class="input-tabs">
+          <div class="input-tab active" onclick="switchInputTab('draw')">✏️ Draw</div>
+          <div class="input-tab" onclick="switchInputTab('upload')">📁 Upload</div>
+        </div>
+
+        <!-- Draw tab -->
+        <div id="tab-draw" class="tab-panel active">
+          <canvas id="draw-canvas" width="280" height="280" style="background:#000;"></canvas>
+          <div class="canvas-controls">
+            <button class="btn btn-ghost" onclick="clearCanvas()">🗑 Clear</button>
+            <button class="btn btn-ghost" id="undo-btn" onclick="undoStroke()">↩ Undo</button>
+          </div>
+          <small style="color:var(--muted);font-size:11px;">Draw large & centred · white on black</small>
+        </div>
+
+        <!-- Upload tab -->
+        <div id="tab-upload" class="tab-panel">
+          <div class="upload-zone" id="upload-zone" onclick="document.getElementById('file-input').click()">
+            <div class="upload-icon">🖼️</div>
+            <p><strong>Click to upload</strong> or drag & drop</p>
+            <p>PNG · JPG · JPEG</p>
+            <img id="upload-preview" />
+          </div>
+          <input type="file" id="file-input" accept=".png,.jpg,.jpeg" onchange="handleFileUpload(event)" />
+        </div>
+
+        <button class="btn btn-primary" id="predict-btn" onclick="runPredict()" style="margin-top:1rem;" disabled>
+          🔍 Predict
+        </button>
+      </div>
+
+      <!-- Result Card -->
+      <div class="card">
+        <div class="card-title">Result</div>
+
+        <div id="result-empty" class="result-empty">
+          <div class="empty-icon">🖊️</div>
+          <p>Draw or upload a digit,<br>then click Predict.</p>
+        </div>
+
+        <div id="result-loading" class="loading-state">
+          <div class="spinner"></div>
+          <span>Classifying…</span>
+        </div>
+
+        <div id="result-content" class="result-content">
+          <div id="pred-badge" class="pred-badge">—</div>
+          <div class="conf-label">Confidence: <strong id="conf-value">—</strong></div>
+          <div class="conf-bars" id="conf-bars"></div>
+          <img id="preview-img" class="preview-img" width="112" height="112" style="display:none;" />
+          <p style="font-size:11px;color:var(--muted);text-align:center;margin-top:.5rem;">28×28 model input</p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ═══════ VALIDATE PAGE ═══════ -->
+<div id="page-validate" class="page">
+  <div class="container">
+    <div class="page-header">
+      <h1>10-Run Validation Suite</h1>
+      <p>One sample per digit class (0–9) is selected from the MNIST test set and classified.</p>
+    </div>
+
+    <div id="validate-placeholder" class="validate-placeholder card">
+      <div style="font-size:36px;">📊</div>
+      <p>Click the button to run the validation suite.</p>
+      <button class="btn btn-primary" style="width:auto;padding:10px 28px;" onclick="runValidation()">Run Validation</button>
+    </div>
+
+    <div id="validate-results" style="display:none;">
+
+      <div class="metrics-grid" id="metrics-grid"></div>
+
+      <div class="card" style="margin-bottom:1rem;">
+        <div class="card-title">Sample Thumbnails</div>
+        <div class="thumbs-row" id="thumbs-row"></div>
+      </div>
+
+      <div class="card" style="margin-bottom:1rem;">
+        <div class="card-title">Run Details</div>
+        <table class="runs-table" id="runs-table">
+          <thead>
+            <tr>
+              <th>Run</th><th>True</th><th>Predicted</th><th>Confidence</th><th>Result</th>
+            </tr>
+          </thead>
+          <tbody id="runs-body"></tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Confusion Matrix (10×10)</div>
+        <div class="cm-wrap" id="cm-wrap"></div>
+        <p style="font-size:11px;color:var(--muted);margin-top:.75rem;">
+          Row = true label · Column = predicted · Blue diagonal = correct predictions
+        </p>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ═══════ ABOUT PAGE ═══════ -->
+<div id="page-about" class="page">
+  <div class="container">
+    <div class="page-header">
+      <h1>About this Project</h1>
+      <p>ICT 120 · BSCS 3A Final Project — MNIST Handwritten Digit Classifier</p>
+    </div>
+
+    <div class="about-grid" style="margin-bottom:1rem;">
+      <div class="card">
+        <div class="card-title">Project Details</div>
+        <table class="info-table">
+          <tr><td>Course</td><td>ICT 120</td></tr>
+          <tr><td>Section</td><td>BSCS 3A</td></tr>
+          <tr><td>Deadline</td><td>May 27, 2026</td></tr>
+          <tr><td>Dataset</td><td>MNIST (70,000 images)</td></tr>
+          <tr><td>Framework</td><td>TensorFlow 2.x / Keras</td></tr>
+          <tr><td>Test Accuracy</td><td style="color:var(--green);font-family:var(--mono);">&gt;97%</td></tr>
+        </table>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Training Config</div>
+        <table class="info-table">
+          <tr><td>Optimizer</td><td>Adam (lr = 0.001)</td></tr>
+          <tr><td>Loss</td><td>Categorical Cross-Entropy</td></tr>
+          <tr><td>Epochs</td><td>10</td></tr>
+          <tr><td>Batch Size</td><td>128</td></tr>
+          <tr><td>Validation Split</td><td>10%</td></tr>
+          <tr><td>Seed</td><td>42</td></tr>
+        </table>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:1rem;">
+      <div class="card-title">Model Architecture</div>
+      <div class="arch-item">
+        <span class="arch-layer">Input</span>
+        <div class="arch-bar-outer"><div class="arch-bar-inner" style="width:100%;background:linear-gradient(90deg,#1a2f6e,#2563EB);">28×28 flatten</div></div>
+        <span class="arch-n">784</span><span class="arch-act">—</span>
+      </div>
+      <div class="arch-item">
+        <span class="arch-layer">Hidden 1</span>
+        <div class="arch-bar-outer"><div class="arch-bar-inner" style="width:16%;">128</div></div>
+        <span class="arch-n">128</span><span class="arch-act">ReLU</span>
+      </div>
+      <div class="arch-item">
+        <span class="arch-layer">Hidden 2</span>
+        <div class="arch-bar-outer"><div class="arch-bar-inner" style="width:8%;">64</div></div>
+        <span class="arch-n">64</span><span class="arch-act">ReLU</span>
+      </div>
+      <div class="arch-item">
+        <span class="arch-layer">Output</span>
+        <div class="arch-bar-outer"><div class="arch-bar-inner" style="width:2%;min-width:24px;background:linear-gradient(90deg,#14532d,#22C55E);">10</div></div>
+        <span class="arch-n">10</span><span class="arch-act">Softmax</span>
+      </div>
+    </div>
+
+    <div class="about-grid" style="margin-bottom:1rem;">
+      <div class="card">
+        <div class="card-title">Experiments Summary</div>
+        <table class="exp-table">
+          <thead><tr><th>Exp</th><th>Change</th><th>Effect</th></tr></thead>
+          <tbody>
+            <tr><td>A</td><td>Dropout(0.5)</td><td>Reduces overfitting</td></tr>
+            <tr><td>B</td><td>SGD optimizer</td><td>Slower convergence</td></tr>
+            <tr><td>C</td><td>[784,16,10]</td><td>Underfitting</td></tr>
+            <tr><td>D</td><td>[784,128,64,32,10]</td><td>Marginal gain</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <div class="card-title">How Preprocessing Works</div>
+        <ol style="padding-left:1.25rem;font-size:13px;color:var(--muted);display:flex;flex-direction:column;gap:.4rem;">
+          <li>Convert image to greyscale</li>
+          <li>Auto-invert if background is bright</li>
+          <li>Resize to 28×28 (Lanczos)</li>
+          <li>Gaussian blur (radius 0.5)</li>
+          <li>Normalise pixels to [0, 1]</li>
+          <li>Flatten to 784-dim vector</li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Analysis</div>
+      <div class="analysis-box">
+        The baseline MLP [784→128→64→10] trained with Adam achieved &gt;97% test accuracy,
+        confirming that shallow MLPs suffice for MNIST. Experiment A (Dropout 0.5) reduced the
+        train–validation gap, improving generalisation at a small accuracy cost. Experiment B
+        demonstrated Adam's superiority over SGD within a fixed 10-epoch budget due to its adaptive
+        learning rates. Experiment C's heavily reduced [784→16→10] architecture showed clear
+        underfitting, validating that model capacity must match dataset complexity. Experiment D's
+        deeper [784→128→64→32→10] network achieved only marginal improvement, suggesting MNIST does
+        not require depth beyond two hidden layers.
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  // ── CONFIG — replace with your Render.com URL after deploying the backend ──
+  const API_BASE = 'http://localhost:5000';
+  // Example: const API_BASE = 'https://mnist-classifier-api.onrender.com';
+
+  // ── PAGE NAVIGATION ──────────────────────────────────────────────────────
+  function switchPage(name) {
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+    document.getElementById('page-' + name).classList.add('active');
+    event.target.classList.add('active');
+  }
+
+  // ── INPUT TABS ───────────────────────────────────────────────────────────
+  let activeInputTab = 'draw';
+  function switchInputTab(tab) {
+    activeInputTab = tab;
+    document.querySelectorAll('.input-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    event.target.classList.add('active');
+    document.getElementById('tab-' + tab).classList.add('active');
+    updatePredictBtn();
+  }
+
+  // ── CANVAS DRAWING ───────────────────────────────────────────────────────
+  const canvas = document.getElementById('draw-canvas');
+  const ctx = canvas.getContext('2d');
+  let drawing = false;
+  let strokes = [];
+  let currentStroke = [];
+  let hasDrawn = false;
+
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 16;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, 280, 280);
+
+  function getPos(e) {
+    const r = canvas.getBoundingClientRect();
+    const src = e.touches ? e.touches[0] : e;
+    return { x: src.clientX - r.left, y: src.clientY - r.top };
+  }
+
+  canvas.addEventListener('mousedown', e => { drawing = true; currentStroke = []; const p = getPos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); currentStroke.push(p); });
+  canvas.addEventListener('mousemove', e => { if (!drawing) return; const p = getPos(e); ctx.lineTo(p.x, p.y); ctx.stroke(); ctx.beginPath(); ctx.moveTo(p.x, p.y); currentStroke.push(p); });
+  canvas.addEventListener('mouseup', () => { if (drawing) { drawing = false; strokes.push([...currentStroke]); hasDrawn = true; updatePredictBtn(); } });
+  canvas.addEventListener('mouseleave', () => { if (drawing) { drawing = false; strokes.push([...currentStroke]); hasDrawn = true; updatePredictBtn(); } });
+
+  canvas.addEventListener('touchstart', e => { e.preventDefault(); drawing = true; currentStroke = []; const p = getPos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); currentStroke.push(p); }, { passive: false });
+  canvas.addEventListener('touchmove', e => { e.preventDefault(); if (!drawing) return; const p = getPos(e); ctx.lineTo(p.x, p.y); ctx.stroke(); ctx.beginPath(); ctx.moveTo(p.x, p.y); currentStroke.push(p); }, { passive: false });
+  canvas.addEventListener('touchend', () => { if (drawing) { drawing = false; strokes.push([...currentStroke]); hasDrawn = true; updatePredictBtn(); } });
+
+  function clearCanvas() {
+  ctx.clearRect(0, 0, 280, 280);
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, 280, 280);
+  strokes = []; hasDrawn = false;
+  updatePredictBtn();
+  resetResult();
+}
+
+  function undoStroke() {
+    if (!strokes.length) return;
+    strokes.pop();
+    ctx.clearRect(0, 0, 280, 280);
+    strokes.forEach(stroke => {
+      ctx.beginPath();
+      stroke.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+      ctx.stroke();
+    });
+    hasDrawn = strokes.length > 0;
+    updatePredictBtn();
+  }
+
+  // ── FILE UPLOAD ───────────────────────────────────────────────────────────
+  let uploadedFile = null;
+
+  function handleFileUpload(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    uploadedFile = file;
+    const url = URL.createObjectURL(file);
+    const preview = document.getElementById('upload-preview');
+    preview.src = url;
+    preview.style.display = 'block';
+    document.querySelector('.upload-zone p').style.display = 'none';
+    updatePredictBtn();
+  }
+
+  const zone = document.getElementById('upload-zone');
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault(); zone.classList.remove('drag-over');
+    const file = e.dataTransfer.files[0];
+    if (file) { uploadedFile = file; const url = URL.createObjectURL(file); document.getElementById('upload-preview').src = url; document.getElementById('upload-preview').style.display = 'block'; updatePredictBtn(); }
+  });
+
+  // ── PREDICT BUTTON STATE ─────────────────────────────────────────────────
+  function updatePredictBtn() {
+    const btn = document.getElementById('predict-btn');
+    if (activeInputTab === 'draw') btn.disabled = !hasDrawn;
+    else btn.disabled = !uploadedFile;
+  }
+
+  function resetResult() {
+    document.getElementById('result-empty').style.display = 'flex';
+    document.getElementById('result-loading').style.display = 'none';
+    document.getElementById('result-content').style.display = 'none';
+  }
+
+  // ── RUN PREDICTION ────────────────────────────────────────────────────────
+  async function runPredict() {
+    document.getElementById('result-empty').style.display = 'none';
+    document.getElementById('result-loading').style.display = 'flex';
+    document.getElementById('result-content').style.display = 'none';
+
+    let base64;
+    if (activeInputTab === 'draw') {
+      base64 = canvas.toDataURL('image/png');
+    } else {
+      base64 = await fileToBase64(uploadedFile);
+    }
+
+    try {
+      const res = await fetch(`${API_BASE}/predict`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: base64 }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      showResult(data);
+    } catch (err) {
+      document.getElementById('result-loading').style.display = 'none';
+      document.getElementById('result-empty').style.display = 'flex';
+      showToast('⚠️ ' + err.message);
+    }
+  }
+
+  function fileToBase64(file) {
+    return new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload = () => res(r.result);
+      r.onerror = rej;
+      r.readAsDataURL(file);
+    });
+  }
+
+  function showResult(data) {
+    document.getElementById('result-loading').style.display = 'none';
+    document.getElementById('result-content').style.display = 'block';
+
+    document.getElementById('pred-badge').textContent = data.predicted;
+    document.getElementById('conf-value').textContent = data.confidence.toFixed(1) + '%';
+
+    // Confidence bars
+    const barsEl = document.getElementById('conf-bars');
+    barsEl.innerHTML = '';
+    data.probabilities.forEach((p, i) => {
+      const isTop = i === data.predicted;
+      barsEl.innerHTML += `
+        <div class="conf-row">
+          <span class="digit-lbl">${i}</span>
+          <div class="bar-track">
+            <div class="bar-fill ${isTop ? 'top' : ''}" style="width:${p}%"></div>
+          </div>
+          <span class="conf-pct">${p.toFixed(1)}%</span>
+        </div>`;
+    });
+
+    if (data.preview) {
+      const img = document.getElementById('preview-img');
+      img.src = data.preview;
+      img.style.display = 'block';
+    }
+  }
+
+  // ── VALIDATION ────────────────────────────────────────────────────────────
+  async function runValidation() {
+    document.getElementById('validate-placeholder').innerHTML = `
+      <div class="loading-state" style="display:flex;">
+        <div class="spinner"></div><span>Running 10 validation predictions…</span>
+      </div>`;
+
+    try {
+      const res = await fetch(`${API_BASE}/validate`);
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      showValidation(data);
+    } catch (err) {
+      document.getElementById('validate-placeholder').innerHTML = `
+        <div class="validate-placeholder card">
+          <p style="color:var(--red);">⚠️ ${err.message}</p>
+          <button class="btn btn-primary" style="width:auto;padding:10px 28px;" onclick="runValidation()">Retry</button>
+        </div>`;
+    }
+  }
+
+  function showValidation(d) {
+    document.getElementById('validate-placeholder').style.display = 'none';
+    document.getElementById('validate-results').style.display = 'block';
+
+    // Metrics
+    const mg = document.getElementById('metrics-grid');
+    const metrics = [
+      ['Overall Accuracy', d.overall_acc + '%'],
+      ['Macro Precision',  d.macro_precision + '%'],
+      ['Macro Recall',     d.macro_recall + '%'],
+      ['Macro F1',         d.macro_f1 + '%'],
+    ];
+    mg.innerHTML = metrics.map(([n, v]) => `
+      <div class="metric-card">
+        <span class="metric-value">${v}</span>
+        <div class="metric-name">${n}</div>
+      </div>`).join('');
+
+    // Thumbnails
+    const tr = document.getElementById('thumbs-row');
+    tr.innerHTML = d.run_details.map(r => `
+      <div class="thumb-item">
+        <img src="${r.thumbnail}" width="52" height="52" class="${r.correct ? 'ok' : 'err'}" />
+        <span>${r.correct ? '✅' : '❌'} ${r.true_label}→${r.predicted}</span>
+      </div>`).join('');
+
+    // Runs table
+    const tbody = document.getElementById('runs-body');
+    tbody.innerHTML = d.run_details.map(r => `
+      <tr class="${r.correct ? 'correct' : 'wrong'}">
+        <td>${r.run}</td>
+        <td style="font-family:var(--mono)">${r.true_label}</td>
+        <td style="font-family:var(--mono)">${r.predicted}</td>
+        <td style="font-family:var(--mono)">${r.confidence}%</td>
+        <td><span class="badge ${r.correct ? 'badge-ok' : 'badge-err'}">${r.correct ? '✓ Correct' : '✗ Wrong'}</span></td>
+      </tr>`).join('');
+
+    // Confusion matrix
+    const cm = d.confusion_matrix;
+    let html = '<table class="cm-table"><tr><th></th>' + [...Array(10)].map((_,i) => `<th>${i}</th>`).join('') + '</tr>';
+    cm.forEach((row, ri) => {
+      html += `<tr><th>${ri}</th>` + row.map((v, ci) =>
+        `<td class="${v > 0 ? 'cm-cell-1' : 'cm-cell-0'}" style="${v>0?`opacity:${Math.max(.3,v)}`:''}">${v}</td>`
+      ).join('') + '</tr>';
+    });
+    html += '</table>';
+    document.getElementById('cm-wrap').innerHTML = html;
+  }
+
+  // ── TOAST ─────────────────────────────────────────────────────────────────
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg; t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 3000);
+  }
+</script>
+</body>
+</html>
