@@ -723,6 +723,18 @@
     document.getElementById('result-content').style.display = 'none';
   }
 
+  // ── WAKE UP BACKEND (Render free tier sleeps after inactivity) ───────────
+  let serverReady = false;
+  async function wakeServer() {
+    if (serverReady) return;
+    try {
+      const res = await fetch(`${API_BASE}/health`, { signal: AbortSignal.timeout(60000) });
+      if (res.ok) serverReady = true;
+    } catch (_) {}
+  }
+  // Ping the server as soon as the page loads so it's warm by the time user draws
+  wakeServer();
+
   // ── RUN PREDICTION ────────────────────────────────────────────────────────
   async function runPredict() {
     document.getElementById('result-empty').style.display = 'none';
@@ -737,18 +749,29 @@
     }
 
     try {
+      // If server isn't confirmed ready yet, show waking message and wait
+      if (!serverReady) {
+        showToast('⏳ Waking up server… please wait up to 30s');
+        await wakeServer();
+      }
+
       const res = await fetch(`${API_BASE}/predict`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ image: base64 }),
+        signal: AbortSignal.timeout(60000),
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
+      serverReady = true;
       showResult(data);
     } catch (err) {
       document.getElementById('result-loading').style.display = 'none';
       document.getElementById('result-empty').style.display = 'flex';
-      showToast('⚠️ ' + err.message);
+      const msg = err.name === 'TimeoutError'
+        ? 'Server is still waking up — please try again in a few seconds!'
+        : err.message;
+      showToast('⚠️ ' + msg);
     }
   }
 
@@ -798,7 +821,7 @@
       </div>`;
 
     try {
-      const res = await fetch(`${API_BASE}/validate`);
+      const res = await fetch(`${API_BASE}/validate`, { signal: AbortSignal.timeout(90000) });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       showValidation(data);
