@@ -769,7 +769,7 @@
       document.getElementById('result-loading').style.display = 'none';
       document.getElementById('result-empty').style.display = 'flex';
       const msg = err.name === 'TimeoutError'
-        ? 'Server is still waking up — please try again in a few seconds!'
+        ? 'Predicting… this may take 10–15 seconds on first run!'
         : err.message;
       showToast('⚠️ ' + msg);
     }
